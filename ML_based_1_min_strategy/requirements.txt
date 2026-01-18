@@ -1,0 +1,52 @@
+streamlit==1.31.0
+pandas==2.1.4
+numpy==1.26.3
+plotly==5.18.0
+pyarrow==14.0.2
+```
+
+## Step 2: Create `.gitignore`
+
+Create a `.gitignore` file:
+```
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Streamlit
+.streamlit/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (optional - uncomment if data files are large)
+# data/*.parquet
