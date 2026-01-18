@@ -221,6 +221,87 @@ def calculate_yearly_comparison(df_full, tz, years=[2023, 2024, 2025]):
     else:
         return None
 
+
+def calculate_monthly_performance(df_full):
+    """Calculate monthly PnL from equity column"""
+    if 'equity' not in df_full.columns:
+        return None
+    
+    # Resample to month-end and calculate monthly returns
+    monthly_equity = df_full['equity'].resample('M').last()
+    monthly_returns = monthly_equity.pct_change().dropna() * 100
+    
+    # Create DataFrame with year-month
+    monthly_df = pd.DataFrame({
+        'Month': monthly_returns.index.strftime('%Y-%m'),
+        'Return (%)': monthly_returns.values
+    })
+    
+    return monthly_df
+
+def calculate_monthly_performance_year(df_full, tz, year=2025):
+    """Calculate monthly PnL from equity column for a specific year"""
+    if 'equity' not in df_full.columns:
+        return None
+    
+    try:
+        # Filter data for specific year
+        year_start = make_tz_aware(pd.Timestamp(f"{year}-01-01"), tz)
+        year_end = make_tz_aware(pd.Timestamp(f"{year}-12-31"), tz) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+        df_year = df_full.loc[year_start:year_end].copy()
+        
+        if len(df_year) < 2 or 'equity' not in df_year.columns:
+            return None
+        
+        # Resample to month-end and calculate monthly returns
+        monthly_equity = df_year['equity'].resample('M').last()
+        monthly_returns = monthly_equity.pct_change().dropna() * 100
+        
+        # Create DataFrame with year-month
+        monthly_df = pd.DataFrame({
+            'Month': monthly_returns.index.strftime('%Y-%m'),
+            'Return (%)': monthly_returns.values
+        })
+        
+        return monthly_df
+    except:
+        return None
+
+
+def get_best_worst_trades(trades_df, n=5):
+    """Get top N best and worst trades by PnL"""
+    if trades_df.empty:
+        return None, None
+    
+    # Sort by PnL
+    sorted_trades = trades_df.sort_values('pnl', ascending=False)
+    
+    # Best trades
+    best_trades = sorted_trades.head(n)[['entry_price', 'exit_price', 'position_ml', 'pnl', 'pnl_pct', 'exit_index']].copy()
+    best_trades['Type'] = best_trades['position_ml'].map({1: 'Long', -1: 'Short'})
+    best_trades = best_trades.rename(columns={
+        'entry_price': 'Entry Price',
+        'exit_price': 'Exit Price',
+        'pnl': 'PnL',
+        'pnl_pct': 'PnL %',
+        'exit_index': 'Exit Time'
+    })
+    best_trades.index.name = 'Entry Time'
+    
+    # Worst trades
+    worst_trades = sorted_trades.tail(n)[['entry_price', 'exit_price', 'position_ml', 'pnl', 'pnl_pct', 'exit_index']].copy()
+    worst_trades['Type'] = worst_trades['position_ml'].map({1: 'Long', -1: 'Short'})
+    worst_trades = worst_trades.rename(columns={
+        'entry_price': 'Entry Price',
+        'exit_price': 'Exit Price',
+        'pnl': 'PnL',
+        'pnl_pct': 'PnL %',
+        'exit_index': 'Exit Time'
+    })
+    worst_trades.index.name = 'Entry Time'
+    
+    return best_trades, worst_trades
+
 def process_trades(df):
     """Process the dataframe to mark entry and exit points"""
     df = df.copy()
@@ -770,6 +851,9 @@ if selected_file is not None:
     with st.spinner("Processing trades..."):
         df_processed = process_trades(df)
     
+    # Extract trades for analysis (DEFINE ONCE HERE)
+    trades = df_processed[df_processed['exit_index'].notna()]
+    
     # Create and display chart
     st.subheader(f"{stock_name}")
     
@@ -818,10 +902,116 @@ if selected_file is not None:
     else:
         st.warning("No data available for year comparison.")
     
+    # Trade Analysis Section
+    st.subheader("Trade Analysis")
+    
+    if not trades.empty:
+        # Get best and worst trades
+        best_trades, worst_trades = get_best_worst_trades(trades, n=5)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 🏆 Top 5 Best Trades")
+            if best_trades is not None:
+                st.dataframe(
+                    best_trades[['Type', 'Entry Price', 'Exit Price', 'PnL', 'PnL %']].style.format({
+                        'Entry Price': '{:.2f}',
+                        'Exit Price': '{:.2f}',
+                        'PnL': '{:.2f}',
+                        'PnL %': '{:.2f}'
+                    }),
+                    use_container_width=True
+                )
+        
+        with col2:
+            st.markdown("#### 📉 Top 5 Worst Trades")
+            if worst_trades is not None:
+                st.dataframe(
+                    worst_trades[['Type', 'Entry Price', 'Exit Price', 'PnL', 'PnL %']].style.format({
+                        'Entry Price': '{:.2f}',
+                        'Exit Price': '{:.2f}',
+                        'PnL': '{:.2f}',
+                        'PnL %': '{:.2f}'
+                    }),
+                    use_container_width=True
+                )
+    
+    # Monthly Performance Section
+    st.subheader("Monthly Performance Analysis (2025)")
+    
+    # Get monthly performance for 2025 only
+    monthly_perf_2025 = calculate_monthly_performance_year(df_full, tz, year=2025)
+    
+    if monthly_perf_2025 is not None and not monthly_perf_2025.empty:
+        # Sort by return to get best and worst months
+        monthly_sorted = monthly_perf_2025.sort_values('Return (%)', ascending=False)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 📈 Best Months (2025)")
+            best_months = monthly_sorted.head(5)  # Show all months, sorted best to worst
+            st.dataframe(
+                best_months.style.format({'Return (%)': '{:.2f}'}),
+                use_container_width=True
+            )
+        
+        with col2:
+            st.markdown("#### 📉 Worst Months (2025)")
+            worst_months = monthly_sorted.tail(5).sort_values('Return (%)')  # Show all months, sorted worst to best
+            st.dataframe(
+                worst_months.style.format({'Return (%)': '{:.2f}'}),
+                use_container_width=True
+            )
+        
+        # Monthly returns heatmap (still show all years for context)
+        st.markdown("#### 📊 Monthly Returns Heatmap (All Years)")
+        
+        # Use full dataset for heatmap
+        monthly_perf_all = calculate_monthly_performance(df_full)
+        
+        if monthly_perf_all is not None and not monthly_perf_all.empty:
+            # Create pivot table for heatmap (Year x Month)
+            monthly_perf_all['Year'] = pd.to_datetime(monthly_perf_all['Month']).dt.year
+            monthly_perf_all['Month_Name'] = pd.to_datetime(monthly_perf_all['Month']).dt.strftime('%b')
+            
+            pivot_table = monthly_perf_all.pivot_table(
+                values='Return (%)',
+                index='Year',
+                columns='Month_Name',
+                aggfunc='sum'
+            )
+            
+            # Reorder columns to calendar order
+            month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            pivot_table = pivot_table.reindex(columns=[m for m in month_order if m in pivot_table.columns])
+            
+            # Create heatmap
+            fig_heatmap = go.Figure(data=go.Heatmap(
+                z=pivot_table.values,
+                x=pivot_table.columns,
+                y=pivot_table.index,
+                colorscale='RdYlGn',
+                text=pivot_table.values,
+                texttemplate='%{text:.2f}%',
+                textfont={"size": 10},
+                colorbar=dict(title="Return %")
+            ))
+            
+            fig_heatmap.update_layout(
+                title='Monthly Returns by Year',
+                xaxis_title='Month',
+                yaxis_title='Year',
+                height=300
+            )
+            
+            st.plotly_chart(fig_heatmap, use_container_width=True)
+    else:
+        st.warning("No monthly data available for 2025.")
+    
     # Trading Metrics
     st.subheader("Trading Metrics")
-    
-    trades = df_processed[df_processed['exit_index'].notna()]
     
     if not trades.empty:
         col1, col2, col3, col4 = st.columns(4)
