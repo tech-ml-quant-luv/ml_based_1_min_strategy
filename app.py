@@ -113,6 +113,40 @@ def make_tz_aware(date_obj, tz):
         dt = pd.Timestamp(date_obj)
     return dt
 
+# Function to calculate daily PnL
+def calculate_daily_pnl(df):
+    """Calculate daily PnL from per_bar_pnl_ml"""
+    if 'per_bar_pnl_ml' not in df.columns:
+        return None
+    
+    df_daily = df.copy()
+    df_daily['date'] = df_daily.index.date
+    daily_pnl = df_daily.groupby('date')['per_bar_pnl_ml'].sum().reset_index()
+    daily_pnl.columns = ['Date', 'Daily PnL']
+    
+    return daily_pnl
+
+# Function to get best and worst days
+def get_best_worst_days(df, n=15):
+    """Get best and worst N days by PnL"""
+    daily_pnl = calculate_daily_pnl(df)
+    
+    if daily_pnl is None or daily_pnl.empty:
+        return None, None
+    
+    # Sort by PnL
+    sorted_days = daily_pnl.sort_values('Daily PnL', ascending=False)
+    
+    # Best days
+    best_days = sorted_days.head(n).copy()
+    best_days['Date'] = pd.to_datetime(best_days['Date']).dt.strftime('%Y-%m-%d')
+    
+    # Worst days
+    worst_days = sorted_days.tail(n).copy()
+    worst_days['Date'] = pd.to_datetime(worst_days['Date']).dt.strftime('%Y-%m-%d')
+    
+    return best_days, worst_days
+
 # Function to calculate annual metrics
 def calculate_annual_metrics(df, capital=1_000_000):
     """
@@ -221,7 +255,6 @@ def calculate_yearly_comparison(df_full, tz, years=[2023, 2024, 2025]):
     else:
         return None
 
-
 def calculate_monthly_performance(df_full):
     """Calculate monthly PnL from equity column"""
     if 'equity' not in df_full.columns:
@@ -266,7 +299,6 @@ def calculate_monthly_performance_year(df_full, tz, year=2025):
         return monthly_df
     except:
         return None
-
 
 def get_best_worst_trades(trades_df, n=5):
     """Get top N best and worst trades by PnL"""
@@ -851,7 +883,7 @@ if selected_file is not None:
     with st.spinner("Processing trades..."):
         df_processed = process_trades(df)
     
-    # Extract trades for analysis (DEFINE ONCE HERE)
+    # Extract trades for analysis
     trades = df_processed[df_processed['exit_index'].notna()]
     
     # Create and display chart
@@ -902,6 +934,50 @@ if selected_file is not None:
     else:
         st.warning("No data available for year comparison.")
     
+    # Best and Worst Days Analysis - YEARLY METRICS
+    st.subheader("Best & Worst Trading Days Analysis (Full Dataset)")
+    
+    best_days_yearly, worst_days_yearly = get_best_worst_days(df_full, n=15)
+    
+    if best_days_yearly is not None and worst_days_yearly is not None:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Best 15 Days (All Years)")
+            st.dataframe(
+                best_days_yearly.style.format({'Daily PnL': '{:.2f}'}),
+                use_container_width=True
+            )
+        
+        with col2:
+            st.markdown("#### Worst 15 Days (All Years)")
+            st.dataframe(
+                worst_days_yearly.style.format({'Daily PnL': '{:.2f}'}),
+                use_container_width=True
+            )
+    
+    # Best and Worst Days Analysis - DATE FILTERED
+    st.subheader("Best & Worst Trading Days Analysis (Filtered Date Range)")
+    
+    best_days_filtered, worst_days_filtered = get_best_worst_days(df, n=15)
+    
+    if best_days_filtered is not None and worst_days_filtered is not None:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Best 15 Days (Selected Period)")
+            st.dataframe(
+                best_days_filtered.style.format({'Daily PnL': '{:.2f}'}),
+                use_container_width=True
+            )
+        
+        with col2:
+            st.markdown("#### Worst 15 Days (Selected Period)")
+            st.dataframe(
+                worst_days_filtered.style.format({'Daily PnL': '{:.2f}'}),
+                use_container_width=True
+            )
+    
     # Trade Analysis Section
     st.subheader("Trade Analysis")
     
@@ -912,7 +988,7 @@ if selected_file is not None:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("#### 🏆 Top 5 Best Trades")
+            st.markdown("#### Top 5 Best Trades")
             if best_trades is not None:
                 st.dataframe(
                     best_trades[['Type', 'Entry Price', 'Exit Price', 'PnL', 'PnL %']].style.format({
@@ -925,7 +1001,7 @@ if selected_file is not None:
                 )
         
         with col2:
-            st.markdown("#### 📉 Top 5 Worst Trades")
+            st.markdown("#### Top 5 Worst Trades")
             if worst_trades is not None:
                 st.dataframe(
                     worst_trades[['Type', 'Entry Price', 'Exit Price', 'PnL', 'PnL %']].style.format({
@@ -950,23 +1026,23 @@ if selected_file is not None:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("#### 📈 Best Months (2025)")
-            best_months = monthly_sorted.head(5)  # Show all months, sorted best to worst
+            st.markdown("#### Best Months (2025)")
+            best_months = monthly_sorted.head(5)
             st.dataframe(
                 best_months.style.format({'Return (%)': '{:.2f}'}),
                 use_container_width=True
             )
         
         with col2:
-            st.markdown("#### 📉 Worst Months (2025)")
-            worst_months = monthly_sorted.tail(5).sort_values('Return (%)')  # Show all months, sorted worst to best
+            st.markdown("#### Worst Months (2025)")
+            worst_months = monthly_sorted.tail(5).sort_values('Return (%)')
             st.dataframe(
                 worst_months.style.format({'Return (%)': '{:.2f}'}),
                 use_container_width=True
             )
         
-        # Monthly returns heatmap (still show all years for context)
-        st.markdown("#### 📊 Monthly Returns Heatmap (All Years)")
+        # Monthly returns heatmap
+        st.markdown("#### Monthly Returns Heatmap (All Years)")
         
         # Use full dataset for heatmap
         monthly_perf_all = calculate_monthly_performance(df_full)
@@ -1069,7 +1145,6 @@ if selected_file is not None:
             file_name=f"{stock_name}_trade_details_{start_date.date()}_to_{end_date.date()}.csv",
             mime="text/csv"
         )
-
 else:
     st.info("Please select a stock from the dropdown")
     
