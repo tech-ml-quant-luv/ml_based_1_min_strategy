@@ -641,7 +641,7 @@ def create_chart(
             df_plot["datetime"].isin(long_entries["exit_index"])
         ].index
         exit_prices = long_entries["exit_price"].values
-        exit_times = df_plot.loc[exit_positions, "datetime"].values
+        exit_times = long_entries["exit_index"].values  # ← FIX: Use exit_index directly
         pnl_values = long_entries["pnl"].values
         pnl_pct_values = long_entries["pnl_pct"].values
 
@@ -660,12 +660,13 @@ def create_chart(
             fig.add_trace(long_exit_trace)
 
     # Plot short exit markers
+    # Plot short exit markers
     if show_ext and not short_entries.empty:
         exit_positions = df_plot[
             df_plot["datetime"].isin(short_entries["exit_index"])
         ].index
         exit_prices = short_entries["exit_price"].values
-        exit_times = df_plot.loc[exit_positions, "datetime"].values
+        exit_times = short_entries["exit_index"].values  # ← FIX: Use exit_index directly
         pnl_values = short_entries["pnl"].values
         pnl_pct_values = short_entries["pnl_pct"].values
 
